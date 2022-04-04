@@ -1,0 +1,114 @@
+MySQL Store Procedure doesn't return multiple datasets
+
+I wrote a stored procedure and tried in phpmyadmin, it didn't work.
+
+I have a command line python application where it also goes wrong.
+
+This stored returns 3 datasets.  If I change the Store Procedure so that it only returns one dataset then it works.  However I want all three datasets.
+
+DROP PROCEDURE if exists getSettingsUploadStock;
+
+DELIMITER //
+
+CREATE PROCEDURE getSettingsUploadStock(IN p_supplier_name VARCHAR(255)) NOT DETERMINISTIC CONTAINS SQL SQL SECURITY DEFINER BEGIN 
+DECLARE bIsOk boolean DEFAULT true;  
+
+CREATE TEMPORARY TABLE temp_errors(
+    err_ID INT AUTO_INCREMENT PRIMARY KEY,
+    err_Category varchar(1024) not null default '',
+    err_Name varchar(1024) not null default '',
+    err_Long_Description varchar(1024) not null default '',
+    err_Values varchar(1024) not null default ''
+);
+
+CREATE TEMPORARY TABLE temp_upload_type (
+    tmp_id INT AUTO_INCREMENT PRIMARY KEY,
+    tmp_name VARCHAR(255) NOT NULL,
+    tmp_version VARCHAR(255) not null default '1.0',
+    tmp_filetype VARCHAR(255) NOT NULL default 'csv',
+    tmp_has_header boolean not null  default true,
+    tmp_prefix VARCHAR(255) NOT NULL
+); 
+
+CREATE TEMPORARY TABLE temp_upload_type_field (
+    tmp_id INT AUTO_INCREMENT PRIMARY KEY,
+    tmp_supplier_id int, 
+    tmp_name VARCHAR(255) NOT NULL,
+    tmp_header_text VARCHAR(255) NOT NULL,
+    tmp_mysql_name VARCHAR(255) NOT NULL,
+    tmp_field_type VARCHAR(255) NOT NULL
+); 
+
+insert into temp_upload_type (tmp_name, tmp_version, tmp_filetype, tmp_has_header, tmp_prefix) 
+select upl_name, upl_version, upl_filetype, upl_has_header, upl_prefix 
+from set_upload_type 
+where upl_name = p_supplier_name;
+
+if not exists (select * from temp_upload_type) then
+    insert into temp_errors (err_Category, err_Name, err_Long_Description, err_Values) 
+    values ('settings', 'Cant find supplier', concat('Cant find supplier ', p_supplier_name , ' in table set_upload_type'), p_supplier_name);
+    set bIsOk = false;
+end if;
+
+if bIsOk then
+    insert into temp_upload_type_field (tmp_supplier_id, tmp_name, tmp_header_text, tmp_mysql_name, tmp_field_type) 
+    select fld_upload_type_id, fld_name, fld_header_text, fld_mysql_name, fld_field_type 
+    from set_upload_type_field 
+    where fld_upload_type_id in (select tmp_id from temp_upload_type);
+
+    if not exists (select * from temp_upload_type) then
+        insert into temp_errors (err_Category, err_Name, err_Long_Description, err_Values) 
+        values ('settings', 'Cant find supplier fields', concat('Cant find supplier fields ', p_supplier_name , ' in table set_upload_type_field'), p_supplier_name);
+        set bIsOk = false;
+    end if;
+end if;
+
+select err_ID, err_Category, err_Name, err_Long_Description, err_Values 
+from temp_errors;
+
+select tmp_id, tmp_name, tmp_version, tmp_filetype, tmp_has_header, tmp_prefix 
+from temp_upload_type;
+
+select tmp_id, tmp_supplier_id, tmp_name, tmp_header_text, tmp_mysql_name, tmp_field_type
+from temp_upload_type_field;
+
+END// 
+
+DELIMITER ;
+
+
+
+The phpMyAdmin error is:
+
+Error
+
+Static analysis:
+
+1 errors were found during analysis.
+
+    Missing expression. (near "ON" at position 25)
+
+SQL query: Edit Edit
+
+SET FOREIGN_KEY_CHECKS = ON;
+
+MySQL said: Documentation
+#2014 - Commands out of sync; you can't run this command now
+
+
+But then in my Python command line application it will return the first dataset, then on the mycursor.nextset() command it produces this error.
+
+
+Oooops error!!!!
+
+Commands out of sync; you can't run this command now
+Line Number: 33
+
+The root of the problem is the ability to return multiple datasets.  Which doesn't work.
+
+What can I do to return multiple datasets from a stored procedure?
+
+
+
+
+
